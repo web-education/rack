@@ -177,39 +177,41 @@ public class RackRepositoryEvent implements RepositoryEvents {
 
 	@Override
 	public void exportResources(String exportId, String userId, JsonArray g, String exportPath, String locale,
-			String host, Handler<Boolean> handler) {
-		QueryBuilder b = QueryBuilder.start("to").is(userId).put("file").exists(true);
-		final JsonObject q = MongoQueryBuilder.build(b);
-		final AtomicBoolean exported = new AtomicBoolean(false);
-		final JsonObject keys = new JsonObject().put("file", 1).put("name", 1);
-		mongo.find(Rack.RACK_COLLECTION, q, null, keys, new Handler<Message<JsonObject>>() {
-			@Override
-			public void handle(Message<JsonObject> event) {
-				JsonArray racks = event.body().getJsonArray("results");
-				if ("ok".equals(event.body().getString("status")) && racks != null) {
-					final Set<String> usedFileName = new HashSet<>();
-					final JsonObject alias = new JsonObject();
-					final String[] ids = new String[racks.size()];
-					for (int i = 0; i < racks.size(); i++) {
-						JsonObject j = racks.getJsonObject(i);
-						ids[i] = j.getString("file");
-						String fileName = j.getString("name");
-						if (fileName != null && fileName.contains("/")) {
-							fileName = fileName.replaceAll("/", "-");
+			String host, JsonArray apps, Handler<Boolean> handler) {
+		if (apps.contains("rack")) {
+			QueryBuilder b = QueryBuilder.start("to").is(userId).put("file").exists(true);
+			final JsonObject q = MongoQueryBuilder.build(b);
+			final AtomicBoolean exported = new AtomicBoolean(false);
+			final JsonObject keys = new JsonObject().put("file", 1).put("name", 1);
+			mongo.find(Rack.RACK_COLLECTION, q, null, keys, new Handler<Message<JsonObject>>() {
+				@Override
+				public void handle(Message<JsonObject> event) {
+					JsonArray racks = event.body().getJsonArray("results");
+					if ("ok".equals(event.body().getString("status")) && racks != null) {
+						final Set<String> usedFileName = new HashSet<>();
+						final JsonObject alias = new JsonObject();
+						final String[] ids = new String[racks.size()];
+						for (int i = 0; i < racks.size(); i++) {
+							JsonObject j = racks.getJsonObject(i);
+							ids[i] = j.getString("file");
+							String fileName = j.getString("name");
+							if (fileName != null && fileName.contains("/")) {
+								fileName = fileName.replaceAll("/", "-");
+							}
+							if (usedFileName.add(fileName)) {
+								alias.put(ids[i], fileName);
+							} else {
+								alias.put(ids[i], ids[i] + "_" + fileName);
+							}
 						}
-						if (usedFileName.add(fileName)) {
-							alias.put(ids[i], fileName);
-						} else {
-							alias.put(ids[i], ids[i] + "_" + fileName);
-						}
+						exportFiles(alias, ids, exportPath, locale, exported, handler);
+					} else {
+						log.error("Rack " + q.encode() + " - " + event.body().getString("message"));
+						handler.handle(exported.get());
 					}
-					exportFiles(alias, ids, exportPath, locale, exported, handler);
-				} else {
-					log.error("Rack " + q.encode() + " - " + event.body().getString("message"));
-					handler.handle(exported.get());
 				}
-			}
-		});
+			});
+		}
 	}
 
 }
